@@ -5,63 +5,50 @@
  */
 
 /**
- * Implements hook_enable().
+ * Implements hook_uninstall().
  *
  * Set variable default if not exist.
  */
-function os_orcid_enable()
-{
-    // If there is no os_orcid_id table, create it.
-    if (!db_table_exists('os_orcid_id')) {
+function os_orcid_uninstall() {
 
-        // Database schema for os_orcid_id_use.
-        $schema['os_orcid_id_use'] = array(
-            'description' => 'Table for storing information about oricd id for tracking.',
-            'fields' => array(
-                'uid' => array(
-                    'type' => 'int',
-                    'not null' => TRUE,
-                ),
-                'orcid_id' => array(
-                    'type' => 'varchar',
-                    'length' => 25,
-                    'not null' => TRUE,
-                ),
-            ),
-            'primary key' => array('uid', 'orcid_id'),
-        );
-
-        // Create the table os_orcid_id.
-        db_create_table('os_orcid_id', $schema['os_orcid_id_use']);
-    }
+    // Delete the orcid id from each users space.
+    _os_orcid_delete_orcid_id()
 }
 
 /**
- * Create table to store ocrid id.
+ * Implements hook_uninstall().
+ *
+ * Set variable default if not exist.
  */
-function os_orcid_update_7100() {
+function os_orcid_uninstall() {
 
-    // If there is no os_orcid_id table, create it.
-    if (!db_table_exists('os_orcid_id')) {
+    // Delete the orcid id from each users space.
+    _os_orcid_delete_orcid_id()
+}
 
-        // Database schema for os_orcid_id_use.
-        $schema['os_orcid_id_use'] = array(
-            'description' => 'Table for storing information about oricd id for tracking.',
-            'fields' => array(
-                'uid' => array(
-                    'type' => 'int',
-                    'not null' => TRUE,
-                ),
-                'orcid_id' => array(
-                    'type' => 'varchar',
-                    'length' => 25,
-                    'not null' => TRUE,
-                ),
-            ),
-            'primary key' => array('uid', 'orcid_id'),
-        );
+/**
+ * Helper function.
+ *
+ * Delete the orcid id from each users space.
+ */
+function _os_orcid_delete_orcid_id() {
+    // Get all the users on the site.
+    $users = entity_load('user');
 
-        // Create the table os_orcid_id.
-        db_create_table('os_orcid_id', $schema['os_orcid_id_use']);
+    // Step through each user and see if has a orcid id set for that users space.
+    // If there is a orcid id set for that user, delete it from the space.
+    foreach($users as $user) {
+
+        // Check if user has a vsite space.
+        if(isset($user->og_group_ref[LANGUAGE_NONE][0])) {
+
+            // Load a space based on the a specific user.
+            $space = spaces_load('og', $user->og_group_ref[LANGUAGE_NONE][0]['target_id']);
+
+            // If they have a orcid id set, delete it..
+            if(isset($space->controllers->variable->values['space']['orcid_id'])) {
+                $space->controllers->variable->del('orcid_id');
+            }
+        }
     }
 }

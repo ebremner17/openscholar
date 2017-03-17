@@ -1,40 +1,51 @@
 <?php
 /**
- * @file
- * Drupal needs this blank file.
+ * os_orcid.module
  */
 
-/***** ALTERING FORMS *****/
+/*** SETTING FUNCTIONS ***/
 
 /**
- * Implements hook_form_FORM_ID_alter().
- * FORM_ID = os_orcid_manage_orcid (editing orcid settings).
+ * Implements hook_cp_settings().
+ *
+ * Sets the form for getting the orcid id.
  */
-function os_orcid_form_os_orcid_manage_orcid_alter(&$form, &$form_state, $form_id) {
-    $form['#submit'][] = '_os_orcid_manage_orcid_submit';
-}
+function os_orcid_cp_settings() {
 
-/***** ALTERING MENUS *****/
+    // Settings variable to be used for form elements.
+    $settings = array();
 
-/**
- * Implements hook_menu().
- */
-function os_orcid_menu() {
-    $items = array();
+    // Get the current space.
+    $space = spaces_get_space();
 
-    $items['cp/orcid'] = array(
-        'title' => 'ORCID',
-        'page callback' => 'drupal_get_form',
-        'page arguments' => array('_os_orcid_manage_orcid'),
-        'file path' => drupal_get_path('module', 'os_orcid'),
-        'file' => 'os_orcid.form.inc',
-        'type' => MENU_NORMAL_ITEM,
-        'access callback' => 'os_orcid_access_orcid',
-        'weight' => 30,
-        'description' => t('Manage ORCID settings and profile.'),
+    $settings['orcid_id'] = array(
+        'group' => array(
+            '#title' => t('ORCID Integration'),
+            '#id' => 'orcid-integration',
+        ),
+        'form' => array(
+            '#id' => 'orcid_id',
+            '#type' => 'textfield',
+            '#default_value' => $space->controllers->variable->values['space']['orcid_id'],
+            '#title' => t('ORCID ID'),
+            '#description' => t('Enter your ORCID ID, It is in the format XXXX-XXXX-XXXX-XXXX and is available at <a href="http://orcid.org">http://orcid.org</a>.  When this is set, your publication information will be imported to your site.'),
+        ),
     );
 
-    return $items;
+    $settings['orcid_id_submit'] = array(
+        'group' => array(
+            '#title' => t('ORCID Integration'),
+            '#id' => 'orcid-integration',
+        ),
+        'form' => array(
+            '#type' => 'submit',
+            '#default_value' => 'Submit',
+            '#validate' => '_os_orchid_validate',
+            '#submit' => array('_os_orcid_manage_orcid_submit'),
+        ),
+    );
+
+    return $settings;
 }
 
 /***** SUBMIT FUNCTIONS ******/
@@ -44,50 +55,44 @@ function os_orcid_menu() {
  */
 function _os_orcid_manage_orcid_submit(&$form, &$form_state) {
 
-    // Get the orcid_id if there is one for the virtual site user.
-    $orcid_id = db_select('os_orcid_id', 'oid')
-        ->fields('oid')
-        ->condition('oid.uid', _os_orcid_get_vsite_user_id())
-        ->execute()
-        ->fetchAll();
+    // Set variable to store the orcid_id from the form.
+    $orcid_id = $form_state['values']['orcid_id'];
 
-    // If there is already an orcid_id for the user, update it.  If not create it.
-    if(count($orcid_id) > 0) {
-        $num_updated = db_update('os_orcid_id')
-            ->fields(array('orcid_id' => $form_state['values']['orcid_id']))
-            ->condition('uid', _os_orcid_get_vsite_user_id())
-            ->execute();
+    if($orcid_id == "") {
+        form_set_error('orcid_id', 'You must enter an orcid id.');
+    }
+    else if(!preg_match('/[0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{4}/', $orcid_id)) {
+        form_set_error('orcid_id', 'Your orcid id must match the pattern XXXX-XXXX-XXXX-XXXX.');
     }
     else {
-        $id = db_insert('os_orcid_id')
-            ->fields(array(
-                'uid' => _os_orcid_get_vsite_user_id(),
-                'orcid_id' => $form_state['values']['orcid_id'],
-            ))
-            ->execute();
+        // Get the current space.
+        $space = spaces_get_space();
+
+        // Update the orcid_id for the user space.
+        $space->controllers->variable->set('orcid_id', $orcid_id);
+
+        // These are the settings to use in the batch of the delete graduate courses.
+        // start is for what record to start from, these will be 0, unless extreme circumstances.
+        // limit is how many records we would like to process at a time, 20 looks about right to give users good feedback.
+        $settings['orcid_id'] = $orcid_id;
+        $settings['limit'] = 10;
+
+        // This is the batch array from drupal core.
+        $batch = array(
+            'operations' => array(),
+            'title' => t('Batch import ORCID works'),
+            'init_message' => t('Import is starting ...'),
+            'progress_message' => t('Processed @current out of @total.'),
+            'error_message' => t('Import has encountered an error.'),
+            'finished' => '_os_orcid_batch_import_orcid_finish',
+        );
+
+        // Set which function we want to batch and send it the settings to use.
+        $batch['operations'][] = array('_os_orcid_batch_import_orcid', array($settings));
+
+        // Start the batch process.
+        batch_set($batch);
     }
-
-    // These are the settings to use in the batch of the delete graduate courses.
-    // start is for what record to start from, these will be 0, unless extreme circumstances.
-    // limit is how many records we would like to process at a time, 20 looks about right to give users good feedback.
-    $settings['orcid_id'] = $form_state['values']['orcid_id'];
-    $settings['limit'] = 10;
-
-    // This is the batch array from drupal core.
-    $batch = array(
-        'operations' => array(),
-        'title' => t('Batch import ORCID works'),
-        'init_message' => t('Import is starting ...'),
-        'progress_message' => t('Processed @current out of @total.'),
-        'error_message' => t('Import has encountered an error.'),
-        'finished' => '_os_orcid_batch_import_orcid_finish',
-    );
-
-    // Set which function we want to batch and send it the settings to use.
-    $batch['operations'][] = array('_os_orcid_batch_import_orcid', array($settings));
-
-    // Start the batch process.
-    batch_set($batch);
 }
 
 /***** BATCHING FUNCTIONS ******/
@@ -337,8 +342,7 @@ function _os_orcid_get_biblio_types() {
 /**
  * Helper function to get user id from url.
  */
-function _os_orcid_get_vsite_user_id()
-{
+function _os_orcid_get_vsite_user_id() {
     global $base_path;
 
     // Get current link.
@@ -380,7 +384,7 @@ function _os_orcid_get_vsite_user_id()
     return $user_id;
 }
 
-/***** Access callbacks *****/
+/***** ACCESS CALLBACKS *****/
 
 /**
  * Access callback; For changing the VSite's theme.
