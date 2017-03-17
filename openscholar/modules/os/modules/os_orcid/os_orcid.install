@@ -16,11 +16,11 @@ function os_orcid_uninstall() {
 }
 
 /**
- * Implements hook_uninstall().
+ * Implements hook_disable().
  *
  * Set variable default if not exist.
  */
-function os_orcid_uninstall() {
+function os_orcid_disable() {
 
     // Delete the orcid id from each users space.
     _os_orcid_delete_orcid_id();
