@@ -23,7 +23,7 @@ function os_orcid_uninstall() {
 function os_orcid_uninstall() {
 
     // Delete the orcid id from each users space.
-    _os_orcid_delete_orcid_id()
+    _os_orcid_delete_orcid_id();
 }
 
 /**
